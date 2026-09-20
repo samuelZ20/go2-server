@@ -1,52 +1,31 @@
-# docker-compose.yml — Go2 Voice Control (arquitetura completa)
+# docker-compose.yml — Go2 Voice Control (pipeline de inferência)
 #
 # Lê o .env da raiz automaticamente. Trocar rede/robô = editar só o .env.
 #
 # ARQUITETURA DE VOZ:
-#   [TV Box] ──TCP audio──▶ inference ──publish──▶ redis ──▶ robot-control ──▶ Go2
+#   [TV Box] ──TCP audio──▶ inference ──HTTP──▶ go2-api (repo separado) ──▶ Go2
+#
+# O envio do comando final ao robô é responsabilidade do go2-api (repo
+# separado, dono único da conexão WebRTC). Este compose cobre só a etapa
+# de inferência (wake word → transcrição → classificação de intenção).
 #
 # REDE: usa a rede bridge padrão do Compose (não network_mode: host), para
 # funcionar igual em Linux nativo, Docker Desktop (Windows/WSL2) e Docker
-# Engine dentro do WSL2. Serviços se enxergam entre si pelo NOME (ex:
-# "redis"), não por 127.0.0.1 — cada container tem seu próprio localhost
-# isolado nesse modo. Só o 'inference' publica porta pro host (9876), já
+# Engine dentro do WSL2. Só o 'inference' publica porta pro host (9876), já
 # que é o único que recebe conexão externa (da TV box).
 #
 # ══════════════════════════════════════════════════════════════════════════════
 #  COMANDOS
 # ══════════════════════════════════════════════════════════════════════════════
-#  Build de tudo:            docker compose build
-#
-#  ── Modo VOZ (produção) ──
-#  Subir pipeline completo:  docker compose --profile voz up
-#  Logs da inferência:       docker compose logs -f inference
-#  Parar tudo:               docker compose down
-#
-#  ── Modo DEBUG: só inferência (redis + inference, SEM robot-control) ──
-#  Útil para testar wake word / Whisper / classificador isoladamente,
-#  sem precisar do robô físico conectado nem do robot-control rodando.
-#    docker compose --profile inference-debug up
-#
-#  ── Modo KEYBOARD-CONTROL (teste manual do robô, sem voz) ──
-#  Testar Go2 por teclado:   docker compose run --rm teclado
-#
-#  O 'teclado' NÃO sobe com 'up' (está no profile 'keyboard-control') — é
-#  uma ferramenta interativa que você chama sob demanda com 'run'. É o
-#  único jeito de testar o robô sem depender da inferência por voz.
+#  Build:                    docker compose build
+#  Subir pipeline:           docker compose up
+#  Logs:                     docker compose logs -f inference
+#  Parar tudo:                docker compose down
 # ══════════════════════════════════════════════════════════════════════════════
 
 services:
 
-  # ── Message broker ──────────────────────────────────────────────────────────
-  # Sem 'ports:' de propósito — não precisa ser acessível de fora do
-  # docker-compose, só pelos outros serviços via rede interna (nome "redis").
-  redis:
-    image: redis:7-alpine
-    container_name: go2_redis
-    restart: unless-stopped
-    profiles: ["voz", "inference-debug"]
-
-  # ── Pipeline de IA (OWW → Whisper medium → Classifier → Redis) ─────────────
+  # ── Pipeline de IA (OWW → Whisper medium → Classifier) ─────────────────────
   inference:
     build:
       context: ./inference
@@ -71,18 +50,12 @@ services:
       - MAX_CMD_WORDS=${MAX_CMD_WORDS}
       - REPETITION_THRESHOLD=${REPETITION_THRESHOLD}
       - INTENT_THRESHOLD=${INTENT_THRESHOLD}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_CHANNEL=${REDIS_CHANNEL}
     ports:
       - "${TCP_PORT}:${TCP_PORT}"
-    depends_on:
-      - redis
     restart: unless-stopped
     dns:
       - 8.8.8.8
       - 1.1.1.1
-    profiles: ["voz", "inference-debug"]
     # ── Acesso à GPU NVIDIA. Requer NVIDIA driver + Docker Desktop com
     # suporte a GPU (já confirmado via `docker run --gpus all ... nvidia-smi`).
     # O código Python detecta e usa CUDA se disponível, com fallback
@@ -94,38 +67,3 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-
-  # ── Controle do robô (Redis → Go2 WebRTC) ──────────────────────────────────
-  # Só faz sentido junto do 'inference' — é ela quem publica os comandos
-  # que o robot-control consome. Por isso só existe no profile 'voz'.
-  # Não precisa de 'ports:' — a conexão com o Go2 (WebRTC) é de saída.
-  robot-control:
-    build:
-      context: .
-      dockerfile: robot_control/Dockerfile
-    container_name: go2_robot
-    environment:
-      - ROBOT_IP=${ROBOT_IP}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_CHANNEL=${REDIS_CHANNEL}
-    depends_on:
-      - redis
-    restart: unless-stopped
-    profiles: ["voz"]
-
-  # ── Controle por teclado (teste manual do robô, sem voz) ────────────────────
-  #  Não sobe com 'docker compose up'. Rode com:
-  #    docker compose run --rm teclado
-  #  Não depende do redis (controla o robô direto), então sem 'ports:'.
-  teclado:
-    build:
-      context: .
-      dockerfile: robot_control/Dockerfile
-    container_name: go2_teclado
-    environment:
-      - ROBOT_IP=${ROBOT_IP}
-    stdin_open: true
-    tty: true
-    command: ["python3", "scripts_teste/control_keyboard.py"]
-    profiles: ["keyboard-control"]

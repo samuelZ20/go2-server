@@ -1,9 +1,7 @@
 # run.ps1 — DX helper para o Go2 Voice Control (servidor) — versão Windows
 #
 # Uso:
-#   .\run.ps1 voz                 -> docker compose --profile voz up
-#   .\run.ps1 inference-debug     -> docker compose --profile inference-debug up
-#   .\run.ps1 keyboard-control    -> docker compose run --rm teclado
+#   .\run.ps1 up                  -> docker compose up
 #   .\run.ps1 build               -> docker compose build
 #   .\run.ps1 logs [servico]      -> docker compose logs -f [servico opcional]
 #   .\run.ps1 down                -> docker compose down
@@ -57,23 +55,12 @@ function Print-Help {
     Write-Host "  COMANDOS DISPONIVEIS"
     Write-Host "  ───────────────────────────────────────────────────────────────────"
     Write-Host ""
-    Write-Host "    ┌─ PRODUCAO ─────────────────────────────────────────────────────"
+    Write-Host "    ┌─ PIPELINE ─────────────────────────────────────────────────────"
     Write-Host "    │"
-    Write-Host "    │  voz                  Sobe o pipeline completo:"
-    Write-Host "    │                       redis + inference + robot-control"
+    Write-Host "    │  up                   Sobe a inferencia (wake word / Whisper /"
+    Write-Host "    │                       classificador). O envio do comando ao"
+    Write-Host "    │                       robo fica a cargo do go2-api (repo separado)."
     Write-Host "    │                       (checa GPU antes de subir)"
-    Write-Host "    │"
-    Write-Host "    └────────────────────────────────────────────────────────────────"
-    Write-Host ""
-    Write-Host "    ┌─ DEBUG ────────────────────────────────────────────────────────"
-    Write-Host "    │"
-    Write-Host "    │  inference-debug      Sobe so redis + inference."
-    Write-Host "    │                       Testa wake word / Whisper / classificador"
-    Write-Host "    │                       sem precisar do robo conectado."
-    Write-Host "    │                       (checa GPU antes de subir)"
-    Write-Host "    │"
-    Write-Host "    │  keyboard-control     Controle manual do robo por teclado,"
-    Write-Host "    │                       sem pipeline de voz (docker compose run)."
     Write-Host "    │"
     Write-Host "    └────────────────────────────────────────────────────────────────"
     Write-Host ""
@@ -90,9 +77,7 @@ function Print-Help {
     Write-Host ""
     Write-Host "  EXEMPLOS"
     Write-Host "  ───────────────────────────────────────────────────────────────────"
-    Write-Host "    .\run.ps1 voz"
-    Write-Host "    .\run.ps1 inference-debug"
-    Write-Host "    .\run.ps1 keyboard-control"
+    Write-Host "    .\run.ps1 up"
     Write-Host "    .\run.ps1 logs inference"
     Write-Host "    .\run.ps1 gpu-check"
     Write-Host "    .\run.ps1 down"
@@ -103,21 +88,10 @@ function Print-Help {
 }
 
 switch ($Command) {
-    "voz" {
+    "up" {
         Check-Gpu
-        Write-Host "==> Subindo pipeline completo (profile: voz)..."
-        docker compose --profile voz up
-    }
-
-    "inference-debug" {
-        Check-Gpu
-        Write-Host "==> Subindo modo debug (redis + inference, sem robo)..."
-        docker compose --profile inference-debug up
-    }
-
-    "keyboard-control" {
-        Write-Host "==> Iniciando controle manual por teclado..."
-        docker compose run --rm teclado
+        Write-Host "==> Subindo pipeline de inferencia..."
+        docker compose up
     }
 
     "build" {

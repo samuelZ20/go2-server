@@ -5,10 +5,10 @@
 ║  server.py — Container INFERENCE                                            ║
 ║                                                                              ║
 ║  Pipeline de IA completo (tudo em memória, zero serialização entre etapas): ║
-║    TCP áudio → OpenWakeWord → Whisper → SentenceTransformer → Redis         ║
+║    TCP áudio → OpenWakeWord → Whisper → SentenceTransformer → intent        ║
 ║                                                                              ║
-║  Publica o comando final no canal Redis 'go2:commands'. O container         ║
-║  robot-control consome e executa no robô.                                    ║
+║  O envio do comando final ao robô (via go2-api, repo separado) ainda não    ║
+║  está integrado aqui — ver TODO em publish_command().                       ║
 ║                                                                              ║
 ║  Correções estruturais (zero hardcode):                                      ║
 ║    • Descarte pós-wake (elimina eco da wake word no comando)                 ║
@@ -21,7 +21,6 @@
 
 import asyncio
 import collections
-import json
 import logging
 import os
 import sys
@@ -31,7 +30,6 @@ from enum import Enum, auto
 from typing import Deque
 
 import numpy as np
-import redis
 import webrtcvad
 import ctranslate2
 from faster_whisper import WhisperModel
@@ -73,11 +71,6 @@ NO_SPEECH_THRESHOLD = float(os.getenv("NO_SPEECH_THRESHOLD", "0.6"))
 # Filtros anti-alucinação (estruturais)
 MAX_CMD_WORDS       = int(os.getenv("MAX_CMD_WORDS", "12"))
 REPETITION_THRESHOLD = float(os.getenv("REPETITION_THRESHOLD", "0.5"))
-
-# Redis
-REDIS_HOST          = os.getenv("REDIS_HOST", "redis")
-REDIS_PORT          = int(os.getenv("REDIS_PORT", "6379"))
-REDIS_CHANNEL       = os.getenv("REDIS_CHANNEL", "go2:commands")
 
 # Derivados
 CHUNK_SAMPLES       = SAMPLE_RATE * CHUNK_MS // 1000
@@ -162,8 +155,6 @@ _whisper = load_whisper_model(WHISPER_MODEL, CPU_THREADS)
 log.info("✓ Whisper pronto: %s (beam=%d)", WHISPER_MODEL, BEAM_SIZE)
 
 _classifier = IntentClassifier()
-
-_redis = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -309,13 +300,13 @@ async def send_beep() -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  Publicar comando no Redis
+#  Publicar comando (ACT)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def publish_command(intent: str, score: float) -> None:
-    payload = json.dumps({"intent": intent, "score": round(score, 3), "ts": time.time()})
-    _redis.publish(REDIS_CHANNEL, payload)
-    log.info("📤 Publicado no Redis: %s (score=%.2f)", intent, score)
+    # TODO: integrar com go2-api (HTTP) — o envio ao robô é responsabilidade
+    # do go2-api (repo separado, dono único da conexão WebRTC com o Go2).
+    log.info("🎯 Intent reconhecido (ainda não enviado ao robô): %s (score=%.2f)", intent, score)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -450,8 +441,7 @@ async def handle_client(reader, writer, audio_buf: AudioBuffer) -> None:
 async def main() -> None:
     log.info("=" * 60)
     log.info("  INFERENCE — Go2 Voice Pipeline")
-    log.info("  TCP: %s:%d | Whisper: %s | Redis: %s:%d",
-             TCP_HOST, TCP_PORT, WHISPER_MODEL, REDIS_HOST, REDIS_PORT)
+    log.info("  TCP: %s:%d | Whisper: %s", TCP_HOST, TCP_PORT, WHISPER_MODEL)
     log.info("=" * 60)
 
     loop = asyncio.get_running_loop()

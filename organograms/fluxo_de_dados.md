@@ -8,10 +8,11 @@ Para o que acontece dentro da caixa "inference", ver [inference_estados.md](./in
 flowchart LR
     Mic["🎙️ Microfone Anker"] -->|áudio PCM| TVBox["TV Box\nclient_armbian.py"]
     TVBox -->|TCP :9876| Inference["Container: inference\n(OWW → Whisper → Classifier)"]
-    Inference -->|publish comando| Redis[("Redis\npub/sub")]
-    Redis -->|subscribe| RobotControl["Container: robot-control"]
-    RobotControl -->|WebRTC| Go2["🐕 Unitree Go2"]
+    Inference -.->|"HTTP (não integrado ainda)"| Go2Api["go2-api\n(repo separado)"]
+    Go2Api -->|WebRTC| Go2["🐕 Unitree Go2"]
 
     style Inference fill:#e8f0fe
-    style Redis fill:#fdecea
+    style Go2Api fill:#fdecea
 ```
+
+Este repositório cobre só até o `inference`. O envio do comando ao robô (via HTTP para o `go2-api`) ainda não está integrado — ver `TODO` em `publish_command()` no `inference/src/server.py`. O `go2-api` é dono único da conexão WebRTC com o Go2.

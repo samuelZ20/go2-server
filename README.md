@@ -7,17 +7,18 @@ Este repositório contém o **servidor** (pipeline de IA + controle do robô). O
 ## Arquitetura
 
 ```
-[TV Box] ──TCP audio──▶ [inference] ──Redis pub/sub──▶ [robot-control] ──WebRTC──▶ [Go2]
+[TV Box] ──TCP audio──▶ [inference] ──HTTP (não integrado ainda)──▶ [go2-api] ──WebRTC──▶ [Go2]
 ```
 
 - **TV Box** (repo separado): captura áudio do microfone Anker e envia via TCP.
-- **inference**: OpenWakeWord (wake word) → faster-whisper (transcrição) → SentenceTransformer (classificação de intenção) → publica comando no Redis.
-- **robot-control**: consome comandos do Redis e os executa no Go2 via WebRTC.
-- **redis**: message broker entre inference e robot-control.
+- **inference**: OpenWakeWord (wake word) → faster-whisper (transcrição) → SentenceTransformer (classificação de intenção).
+- **go2-api** (repo separado): dono único da conexão WebRTC com o Go2; recebe o comando via HTTP e o executa no robô.
+
+O controle do robô (WebRTC, comandos de movimento) não faz parte deste repositório — vive inteiramente no `go2-api`. O envio do intent classificado pelo `inference` para o `go2-api` via HTTP ainda não está implementado (ver `TODO` em `publish_command()` em `inference/src/server.py`).
 
 Diagramas detalhados em [`organograms/`](./organograms):
 - [Fluxo de dados completo](./organograms/fluxo_de_dados.md)
-- [Profiles do docker-compose](./organograms/docker_compose_profiles.md)
+- [Serviços do docker-compose](./organograms/docker_compose_profiles.md)
 - [Estados internos do inference](./organograms/inference_estados.md)
 
 Histórico de bugs encontrados e soluções: [`docs/PROBLEMAS_E_SOLUCOES.md`](./docs/PROBLEMAS_E_SOLUCOES.md) (também navegável na [wiki](https://github.com/carlosvts/unitreego2/wiki)).
@@ -42,9 +43,9 @@ Adicione uma nova entrada no final do arquivo seguindo este formato:
 - **Componentes**:
   - `client-tvbox`: PyAudio, ALSA, microfone Anker, `generate_env.sh`, detecção de IP do lado da TV box, path do `.env` no `client_armbian.py` (repo separado [go2-tvbox](https://github.com/carlosvts/go2-tvbox))
   - `server-docker-network`: firewalld, Windows Firewall, `network_mode`, WSL2, docker-compose
-  - `dependencias-python`: pip, torch, transformers, redis, openwakeword, conflitos de versão
+  - `dependencias-python`: pip, torch, transformers, openwakeword, conflitos de versão
   - `performance-gpu`: latência do Whisper, CUDA, CPU vs GPU
-  - `go2`: controle do robô via WebRTC (`robot_control/`, `unitree_webrtc_connect/`), comandos de movimento, conexão/autenticação com o Go2
+  - `go2`: controle do robô via WebRTC, comandos de movimento, conexão/autenticação com o Go2 — vive no repositório separado `go2-api`, não neste repo
   - Se o bug tocar mais de uma área, use a categoria onde a causa raiz mora e adicione a outra como tag secundária.
 - Depois do PR mergeado, rode `/sync-wiki` (comando do Claude Code, em [`.claude/commands/sync-wiki.md`](./.claude/commands/sync-wiki.md)) para regenerar a wiki.
 
@@ -54,13 +55,13 @@ Adicione uma nova entrada no final do arquivo seguindo este formato:
 .
 ├── docker-compose.yml
 ├── inference/          # Dockerfile + código do pipeline de IA
-├── robot_control/      # Dockerfile + código de controle do Go2
-├── scripts_teste/      # Scripts de teste manual (ex: controle por teclado)
 ├── organograms/        # Diagramas Mermaid da arquitetura
 ├── .env                # Configuração do servidor (não versionado)
 └── docs/
     └── PROBLEMAS_E_SOLUCOES.md
 ```
+
+> O controle do robô (WebRTC) vive no repositório separado `go2-api`, não aqui.
 
 ## Configuração (`.env`)
 
@@ -77,8 +78,6 @@ Crie um `.env` na raiz com as seguintes variáveis:
 | `MIN_CMD_DURATION_S`, `SILENCE_TIMEOUT_MS`, `CMD_MAX_SECONDS` | Controle de captura do comando de voz |
 | `WHISPER_MODEL`, `CPU_THREADS`, `BEAM_SIZE`, `NO_SPEECH_THRESHOLD` | Configuração do faster-whisper |
 | `MAX_CMD_WORDS`, `REPETITION_THRESHOLD`, `INTENT_THRESHOLD` | Configuração do classificador de intenção |
-| `REDIS_CHANNEL` | Canal Redis usado entre inference e robot-control |
-| `ROBOT_IP` | IP do robô Go2 na rede local |
 
 ## Como rodar
 
@@ -89,9 +88,7 @@ O jeito recomendado é usar o `./run.sh` (DX helper com todos os comandos do pro
 ```bash
 ./run.sh                    # mostra o menu de ajuda com todos os comandos
 ./run.sh build              # build de todas as imagens
-./run.sh voz                # modo produção — pipeline completo de voz
-./run.sh inference-debug    # modo debug — só a inferência, sem robô
-./run.sh keyboard-control   # testar o robô manualmente por teclado
+./run.sh up                 # sobe a inferência (wake word / Whisper / classificador)
 ./run.sh logs inference     # logs de um serviço específico
 ./run.sh down               # parar tudo
 ./run.sh gpu-check          # checa se há GPU NVIDIA disponível pro Docker
@@ -104,9 +101,7 @@ Use o `.\run.ps1` (PowerShell), equivalente ao `run.sh` com os mesmos comandos:
 ```powershell
 .\run.ps1                    # mostra o menu de ajuda com todos os comandos
 .\run.ps1 build               # build de todas as imagens
-.\run.ps1 voz                 # modo produção — pipeline completo de voz
-.\run.ps1 inference-debug     # modo debug — só a inferência, sem robô
-.\run.ps1 keyboard-control    # testar o robô manualmente por teclado
+.\run.ps1 up                  # sobe a inferência (wake word / Whisper / classificador)
 .\run.ps1 logs inference      # logs de um serviço específico
 .\run.ps1 down                # parar tudo
 .\run.ps1 gpu-check           # checa se há GPU NVIDIA disponível pro Docker
@@ -122,16 +117,12 @@ Use o `.\run.ps1` (PowerShell), equivalente ao `run.sh` com os mesmos comandos:
 > ```
 > Ajuste para mais se a máquina tiver RAM sobrando. Depois de salvar, rode `wsl --shutdown` e reabra o Docker Desktop para aplicar. Detalhes em [`docs/PROBLEMAS_E_SOLUCOES.md`](./docs/PROBLEMAS_E_SOLUCOES.md) (item #11).
 
-> `robot-control` só existe no profile `voz` — ele depende dos comandos publicados pela inferência, então não faz sentido isolado.
-
 <details>
 <summary>Comandos <code>docker compose</code> equivalentes (sem o run.sh)</summary>
 
 ```bash
 docker compose build
-docker compose --profile voz up
-docker compose --profile inference-debug up
-docker compose run --rm teclado
+docker compose up
 docker compose logs -f inference
 docker compose down
 ```

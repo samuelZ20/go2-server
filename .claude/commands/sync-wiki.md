@@ -8,9 +8,9 @@ Regenere o GitHub Wiki deste repositório a partir de `docs/PROBLEMAS_E_SOLUCOES
 
 - `client-tvbox`: PyAudio, ALSA, microfone Anker, `generate_env.sh`, detecção de IP no lado da TV box, path do `.env` no `client_armbian.py` (repo separado [go2-tvbox](https://github.com/carlosvts/go2-tvbox))
 - `server-docker-network`: firewalld, Windows Firewall, `network_mode`, WSL2, docker-compose
-- `dependencias-python`: pip, torch, transformers, redis, openwakeword, conflitos de versão
+- `dependencias-python`: pip, torch, transformers, openwakeword, conflitos de versão
 - `performance-gpu`: latência do Whisper, CUDA, CPU vs GPU
-- `go2`: controle do robô via WebRTC (`robot_control/`, `unitree_webrtc_connect/`), comandos de movimento, conexão/autenticação com o Go2
+- `go2`: controle do robô via WebRTC, comandos de movimento, conexão/autenticação com o Go2 — vive no repositório separado `go2-api`, não neste repo
 
 Se um item tocar mais de uma categoria, classifique pela categoria onde a **causa raiz** mora, e adicione a outra como tag secundária.
 

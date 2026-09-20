@@ -2,9 +2,7 @@
 # run.sh — DX helper para o Go2 Voice Control (servidor)
 #
 # Uso:
-#   ./run.sh voz                 -> docker compose --profile voz up
-#   ./run.sh inference-debug     -> docker compose --profile inference-debug up
-#   ./run.sh keyboard-control    -> docker compose run --rm teclado
+#   ./run.sh up                  -> docker compose up
 #   ./run.sh build               -> docker compose build
 #   ./run.sh logs [servico]      -> docker compose logs -f [servico opcional]
 #   ./run.sh down                -> docker compose down
@@ -58,23 +56,12 @@ cat <<'EOF'
   COMANDOS DISPONÍVEIS
   ───────────────────────────────────────────────────────────────────
 
-    ┌─ PRODUÇÃO ─────────────────────────────────────────────────────
+    ┌─ PIPELINE ─────────────────────────────────────────────────────
     │
-    │  voz                  Sobe o pipeline completo:
-    │                       redis + inference + robot-control
+    │  up                   Sobe a inferência (wake word / Whisper /
+    │                       classificador). O envio do comando ao
+    │                       robô fica a cargo do go2-api (repo separado).
     │                       (checa GPU antes de subir)
-    │
-    └────────────────────────────────────────────────────────────────
-
-    ┌─ DEBUG ────────────────────────────────────────────────────────
-    │
-    │  inference-debug      Sobe só redis + inference.
-    │                       Testa wake word / Whisper / classificador
-    │                       sem precisar do robô conectado.
-    │                       (checa GPU antes de subir)
-    │
-    │  keyboard-control      Controle manual do robô por teclado,
-    │                       sem pipeline de voz (docker compose run).
     │
     └────────────────────────────────────────────────────────────────
 
@@ -91,9 +78,7 @@ cat <<'EOF'
 
   EXEMPLOS
   ───────────────────────────────────────────────────────────────────
-    ./run.sh voz
-    ./run.sh inference-debug
-    ./run.sh keyboard-control
+    ./run.sh up
     ./run.sh logs inference
     ./run.sh gpu-check
     ./run.sh down
@@ -104,21 +89,10 @@ EOF
 }
 
 case "$CMD" in
-    voz)
+    up)
         check_gpu
-        echo "==> Subindo pipeline completo (profile: voz)..."
-        exec docker compose --profile voz up
-        ;;
-
-    inference-debug)
-        check_gpu
-        echo "==> Subindo modo debug (redis + inference, sem robô)..."
-        exec docker compose --profile inference-debug up
-        ;;
-
-    keyboard-control)
-        echo "==> Iniciando controle manual por teclado..."
-        exec docker compose run --rm teclado
+        echo "==> Subindo pipeline de inferência..."
+        exec docker compose up
         ;;
 
     build)
